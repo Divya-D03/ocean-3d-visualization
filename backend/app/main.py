@@ -1,14 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.core.config import settings
+from app.api import api_router
 
 app = FastAPI(
-    title="Ocean 3D Visualization API",
-    version="0.1.0",
-    description="Backend API for the Ocean 3D Visualization Platform",
+    title=settings.APP_NAME,
+    version=settings.VERSION,
+    description="Production MVP API for Ocean 3D Explorer — Integrating INCOIS ERDDAP numerical ocean models with in-situ ARGO observations.",
 )
 
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -17,8 +18,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount all /api routes
+app.include_router(api_router)
+
+
+# Root endpoints
+@app.get("/", tags=["root"])
+async def root():
+    return {
+        "message": "Welcome to Ocean 3D Explorer API",
+        "docs_url": "/docs",
+        "health_url": "/api/health",
+        "version": settings.VERSION,
+    }
+
 
 @app.get("/health", tags=["health"])
-async def health_check():
-    """Health check endpoint — confirms the API is running."""
-    return {"status": "ok"}
+async def direct_health():
+    """Top-level health endpoint alias."""
+    from app.api.endpoints.health import health_check
+    return await health_check()

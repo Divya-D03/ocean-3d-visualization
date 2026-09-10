@@ -31,6 +31,11 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+backend/data/*
+!backend/data/.gitkeep
+
 
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
