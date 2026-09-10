@@ -85,3 +85,15 @@ export const fetchComparison = async (platformId, depth = 5.0, time = '2020-01-1
   });
   return res.data;
 };
+
+export const fetchOceanProfile = async ({ latitude, longitude, time = '2020-01-15T00:00:00Z' }) => {
+  const res = await client.get('/ocean/profile', {
+    params: {
+      latitude,
+      longitude,
+      time,
+    },
+  });
+  return res.data;
+};
+

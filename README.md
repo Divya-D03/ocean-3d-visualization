@@ -54,6 +54,7 @@ Operational oceanographers, climate scientists, and maritime planners require in
 │  · Dynamic Flow Streamlines / Particle Field (Historical Currents)     │
 │  · Interactive ARGO Float Markers (Raycaster hover/click selection)    │
 │  · Vertical CTD Depth Profiles & Side-by-Side Model Validation UI      │
+│  · 3D Depth-Profile Block Scene (2° bounding box, arrows, CTD column)  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -236,29 +237,35 @@ ocean-3d-visualization/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── ColorbarLegend.jsx    # Scientific color gradient & units
-│   │   │   ├── ComparisonPanel.jsx   # Side-by-side validation & CTD chart
-│   │   │   ├── ControlsBar.jsx       # Floating bottom parameter & depth deck
-│   │   │   ├── DatasetInfoModal.jsx  # Documentation & SIH modal
-│   │   │   ├── LoadingOverlay.jsx    # Animated loading indicators
-│   │   │   └── Navbar.jsx            # Brand, presets, and status badges
+│   │   │   ├── ColorbarLegend.jsx       # Scientific color gradient & units
+│   │   │   ├── ComparisonPanel.jsx      # Side-by-side validation & 3D profile trigger
+│   │   │   ├── ControlsBar.jsx          # Floating bottom parameter & depth deck
+│   │   │   ├── DatasetInfoModal.jsx     # Documentation & SIH modal
+│   │   │   ├── DepthProfile3DView.jsx   # Full-page 3D depth-profile scene container
+│   │   │   ├── LoadingOverlay.jsx       # Animated loading indicators
+│   │   │   └── Navbar.jsx               # Brand, presets, and status badges
 │   │   ├── services/
-│   │   │   └── api.js                # Axios client for backend APIs
+│   │   │   └── api.js                   # Axios client for backend APIs
 │   │   ├── store/
-│   │   │   └── useOceanStore.js      # Zustand global state manager
+│   │   │   └── useOceanStore.js         # Zustand global state manager & caching
 │   │   ├── three/
-│   │   │   ├── ArgoFloatMarkers.jsx  # Interactive 3D floats & depth lines
-│   │   │   ├── coords.js             # Geographic to 3D coordinate math
-│   │   │   ├── CurrentParticles.jsx  # Flow particles for GEO_U / GEO_V
-│   │   │   ├── DepthGrid.jsx         # 3D bounding box & depth markers
-│   │   │   ├── GriddedLayer.jsx      # Scalar surface plane with vertex colors
-│   │   │   ├── OceanBasin.jsx        # Ocean surface, bathymetry, coastlines
-│   │   │   └── OceanScene.jsx        # R3F Canvas, lighting, & OrbitControls
+│   │   │   ├── ArgoFloatMarkers.jsx     # Interactive 3D floats & depth lines
+│   │   │   ├── BlockCTDColumn.jsx       # Vertical in-situ CTD column with sensor beads
+│   │   │   ├── BlockCurrentArrows.jsx   # 3D surface current glyphs (cylinder+cone)
+│   │   │   ├── BlockScalarLayer.jsx     # Dynamic canvas texture depth slices
+│   │   │   ├── BlockWireframeBox.jsx    # 2° bounding box with vertical depth scale
+│   │   │   ├── coords.js                # Geographic to 3D coordinate math
+│   │   │   ├── CurrentParticles.jsx     # Flow particles for GEO_U / GEO_V
+│   │   │   ├── DepthGrid.jsx            # 3D bounding box & depth markers
+│   │   │   ├── DepthProfileBlockScene.jsx # 3D block Canvas, lights & controls
+│   │   │   ├── GriddedLayer.jsx         # Scalar surface plane with vertex colors
+│   │   │   ├── OceanBasin.jsx           # Ocean surface, bathymetry, coastlines
+│   │   │   └── OceanScene.jsx           # R3F Canvas, lighting, & OrbitControls
 │   │   ├── utils/
-│   │   │   └── colormaps.js          # Turbo, Viridis, Haline, Speed colormaps
-│   │   ├── App.jsx                   # Main layout container
-│   │   ├── index.css                 # Dark ocean aesthetic & custom scrollbars
-│   │   └── main.jsx                  # React entry point
+│   │   │   └── colormaps.js             # Turbo, Viridis, Haline, Speed colormaps
+│   │   ├── App.jsx                      # Main container with cinematic view transition
+│   │   ├── index.css                    # Dark ocean aesthetic & custom scrollbars
+│   │   └── main.jsx                     # React entry point
 │   ├── package.json
 │   ├── vite.config.js                # Dev proxy to FastAPI backend
 │   └── tailwind.config.js

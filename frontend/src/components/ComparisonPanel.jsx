@@ -1,4 +1,4 @@
-import { X, CheckCircle, BarChart3, Waves, ArrowRight } from 'lucide-react';
+import { X, CheckCircle, BarChart3, Waves, ArrowRight, Box } from 'lucide-react';
 import { useOceanStore } from '../store/useOceanStore';
 
 export default function ComparisonPanel() {
@@ -7,6 +7,7 @@ export default function ComparisonPanel() {
   const comparisonData = useOceanStore((state) => state.comparisonData);
   const selectedFloat = useOceanStore((state) => state.selectedFloat);
   const closeFloatDetail = useOceanStore((state) => state.closeFloatDetail);
+  const open3DProfile = useOceanStore((state) => state.open3DProfile);
 
   if (!isComparisonOpen || !comparisonData) return null;
 
@@ -84,6 +85,16 @@ export default function ComparisonPanel() {
           <span className="text-slate-300">{formatDate(observation_time)}</span>
         </div>
       </div>
+
+      {/* 3D Depth Profile Scene Entry Button */}
+      <button
+        onClick={() => open3DProfile(selectedFloat)}
+        className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-950/50 border border-cyan-400/40 transition active:scale-[0.98] cursor-pointer"
+      >
+        <Box className="w-4 h-4 text-cyan-200" />
+        <span>View 3D Depth Profile</span>
+        <ArrowRight className="w-3.5 h-3.5 ml-auto text-cyan-200" />
+      </button>
 
       {/* Side-by-Side Surface Comparison Cards */}
       <div className="space-y-1.5">

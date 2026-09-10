@@ -8,18 +8,33 @@ import {
   fetchObservations,
   fetchFloatProfile,
   fetchComparison,
+  fetchOceanProfile,
 } from '../services/api';
 
+// Bounding box delta for the 3D block view (~2° box: ±1.0° in lat and lon)
+export const STATION_BOX_DELTA = 1.0;
+
+export const DEFAULT_PRESETS = {
+  'All': { lat_min: -25.0, lat_max: 25.0, lon_min: 40.0, lon_max: 110.0 },
+  'Arabian Sea': { lat_min: 8.0, lat_max: 25.0, lon_min: 50.0, lon_max: 77.0 },
+  'Bay of Bengal': { lat_min: 5.0, lat_max: 23.0, lon_min: 80.0, lon_max: 98.0 },
+  'Lakshadweep Sea': { lat_min: 8.0, lat_max: 14.0, lon_min: 71.0, lon_max: 77.0 },
+  'Andaman Sea': { lat_min: 6.0, lat_max: 16.0, lon_min: 92.0, lon_max: 99.0 },
+};
+
 export const useOceanStore = create((set, get) => ({
-  // Active parameter
+  // View mode: 'map' (overview 3D basin) or 'block3d' (station 3D depth-profile block)
+  viewMode: 'map',
+
+  // Active parameter on map
   selectedParam: 'temperature', // 'temperature' | 'salinity' | 'currents' | 'observations'
   depth: 5.0,
   time: '2020-01-15T00:00:00Z',
-  
+
   // Region & Bounds
-  activeRegion: 'Arabian Sea',
-  bounds: { lat_min: 5.0, lat_max: 25.0, lon_min: 50.0, lon_max: 77.0 },
-  presets: {},
+  activeRegion: 'All',
+  bounds: DEFAULT_PRESETS['All'],
+  presets: DEFAULT_PRESETS,
 
   // Metadata
   availableDepths: [5.0, 10.0, 20.0, 30.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0, 2000.0],
@@ -30,7 +45,7 @@ export const useOceanStore = create((set, get) => ({
   isPlaying: false,
   playbackSpeed: 2000,
 
-  // Data states
+  // Map Data states
   gridData: null,
   currentsData: null,
   observations: [],
@@ -38,7 +53,22 @@ export const useOceanStore = create((set, get) => ({
   selectedFloatProfile: null,
   comparisonData: null,
 
-  // Layers
+  // 3D Block View State
+  blockStation: null,
+  blockVariable: 'temperature', // 'temperature' | 'salinity'
+  blockDepth: 5.0,
+  blockTime: '2020-01-15T00:00:00Z',
+  blockLayers: {
+    scalarSlice: true,
+    currentArrows: true,
+    ctdColumn: true,
+  },
+  blockStationData: null,
+  stationCache: {}, // stationId -> cached data
+  blockLoading: false,
+  blockError: null,
+
+  // Layers on map
   layerVisibility: {
     surface: true,
     gridded: true,
@@ -107,9 +137,14 @@ export const useOceanStore = create((set, get) => ({
   setComparisonOpen: (open) => set({ isComparisonOpen: open }),
   setDatasetInfoOpen: (open) => set({ isDatasetInfoOpen: open }),
 
-  // Select ARGO float
+  // Select ARGO float on map
   selectFloat: async (floatSummary) => {
-    set({ selectedFloat: floatSummary, isComparisonOpen: true, loading: true, loadingMessage: `Loading ARGO Float ${floatSummary.platform_number}...` });
+    set({
+      selectedFloat: floatSummary,
+      isComparisonOpen: true,
+      loading: true,
+      loadingMessage: `Loading ARGO Float ${floatSummary.platform_number}...`,
+    });
     try {
       const [profile, comparison] = await Promise.all([
         fetchFloatProfile(floatSummary.platform_number),
@@ -127,10 +162,193 @@ export const useOceanStore = create((set, get) => ({
   },
 
   closeFloatDetail: () => {
-    set({ selectedFloat: null, selectedFloatProfile: null, comparisonData: null, isComparisonOpen: false });
+    set({
+      selectedFloat: null,
+      selectedFloatProfile: null,
+      comparisonData: null,
+      isComparisonOpen: false,
+    });
   },
 
-  // Data Loading
+  // 3D Depth-Profile Block View Actions
+  open3DProfile: async (station) => {
+    const targetStation = station || get().selectedFloat;
+    if (!targetStation) return;
+
+    set({
+      viewMode: 'block3d',
+      blockStation: targetStation,
+      blockVariable: 'temperature',
+      blockDepth: 5.0,
+      blockError: null,
+    });
+
+    await get().loadStationBlockData(targetStation);
+  },
+
+  close3DProfile: () => {
+    set({ viewMode: 'map' });
+  },
+
+  toggleBlockLayer: (layerKey) => {
+    set((state) => ({
+      blockLayers: {
+        ...state.blockLayers,
+        [layerKey]: !state.blockLayers[layerKey],
+      },
+    }));
+  },
+
+  setBlockVariable: (variable) => {
+    set({ blockVariable: variable });
+    const { blockStation } = get();
+    if (blockStation) {
+      get().loadStationBlockData(blockStation);
+    }
+  },
+
+  setBlockDepth: (depth) => {
+    set({ blockDepth: depth });
+    const { blockStation } = get();
+    if (blockStation) {
+      get().loadStationBlockData(blockStation);
+    }
+  },
+
+  setBlockTime: (time) => {
+    set({ blockTime: time });
+    const { blockStation } = get();
+    if (blockStation) {
+      get().loadStationBlockData(blockStation);
+    }
+  },
+
+  loadStationBlockData: async (station) => {
+    const stationId = station.platform_number;
+    const { blockVariable, blockDepth, blockTime, stationCache } = get();
+
+    // Small ~2° bounding box around station's lat/lon
+    const bounds = {
+      lat_min: Math.max(-29.5, station.latitude - STATION_BOX_DELTA),
+      lat_max: Math.min(29.5, station.latitude + STATION_BOX_DELTA),
+      lon_min: Math.max(30.5, station.longitude - STATION_BOX_DELTA),
+      lon_max: Math.min(119.5, station.longitude + STATION_BOX_DELTA),
+    };
+
+    let cached = stationCache[stationId] || {
+      station,
+      profile: null,
+      griddedProfile: null,
+      comparison: null,
+      temperatureLayers: {},
+      salinityLayers: {},
+      currents: null,
+    };
+
+    set({ blockLoading: true, blockError: null });
+
+    try {
+      // 1. Fetch metadata/profile/comparison if not already cached
+      const promises = [];
+
+      if (!cached.profile) {
+        promises.push(
+          fetchFloatProfile(stationId).then((p) => {
+            cached.profile = p;
+          })
+        );
+      }
+
+      if (!cached.griddedProfile) {
+        promises.push(
+          fetchOceanProfile({
+            latitude: station.latitude,
+            longitude: station.longitude,
+            time: blockTime,
+          }).then((gp) => {
+            cached.griddedProfile = gp;
+          })
+        );
+      }
+
+      if (!cached.comparison) {
+        promises.push(
+          fetchComparison(stationId, blockDepth, blockTime).then((c) => {
+            cached.comparison = c;
+          })
+        );
+      }
+
+      // 2. Fetch the active scalar variable layer for the 2° box
+      const layerKey = `${blockTime}_${blockDepth}`;
+
+      if (blockVariable === 'temperature' && !cached.temperatureLayers[layerKey]) {
+        promises.push(
+          fetchTemperature({ depth: blockDepth, time: blockTime, bounds }).then((grid) => {
+            cached.temperatureLayers[layerKey] = grid;
+          })
+        );
+      } else if (blockVariable === 'salinity' && !cached.salinityLayers[layerKey]) {
+        promises.push(
+          fetchSalinity({ depth: blockDepth, time: blockTime, bounds }).then((grid) => {
+            cached.salinityLayers[layerKey] = grid;
+          })
+        );
+      }
+
+      // 3. Always ensure surface currents are loaded for the 2° box
+      if (!cached.currents) {
+        promises.push(
+          fetchCurrents({ time: '2018-01-10T00:00:00Z', bounds }).then((curr) => {
+            cached.currents = curr;
+          })
+        );
+      }
+
+      await Promise.all(promises);
+
+      // Save to cache
+      const updatedCache = { ...stationCache, [stationId]: cached };
+      set({
+        stationCache: updatedCache,
+        blockStationData: cached,
+        blockLoading: false,
+      });
+
+      // Background preload other standard depth levels for smooth volumetric slicing
+      if (blockVariable === 'temperature' || blockVariable === 'salinity') {
+        const depthsToPreload = [5.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0].filter(
+          (d) => d !== blockDepth
+        );
+        depthsToPreload.slice(0, 3).forEach((d) => {
+          const k = `${blockTime}_${d}`;
+          if (blockVariable === 'temperature' && !cached.temperatureLayers[k]) {
+            fetchTemperature({ depth: d, time: blockTime, bounds })
+              .then((grid) => {
+                cached.temperatureLayers[k] = grid;
+                set({ stationCache: { ...get().stationCache, [stationId]: cached } });
+              })
+              .catch(() => {});
+          } else if (blockVariable === 'salinity' && !cached.salinityLayers[k]) {
+            fetchSalinity({ depth: d, time: blockTime, bounds })
+              .then((grid) => {
+                cached.salinityLayers[k] = grid;
+                set({ stationCache: { ...get().stationCache, [stationId]: cached } });
+              })
+              .catch(() => {});
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error loading station block data:', err);
+      set({
+        blockLoading: false,
+        blockError: 'Failed to fetch depth data from backend for this station. Please check connectivity.',
+      });
+    }
+  },
+
+  // Map Data Initialization
   initPlatform: async () => {
     set({ loading: true, loadingMessage: 'Connecting to INCOIS ERDDAP services...' });
     try {
@@ -139,17 +357,17 @@ export const useOceanStore = create((set, get) => ({
         fetchMetadata().catch(() => ({})),
       ]);
 
+      const mergedPresets = {
+        ...DEFAULT_PRESETS,
+        ...(meta.presets || {}),
+      };
+
       set({
         healthStatus: health,
         availableDepths: meta.available_depths || get().availableDepths,
         availableTimes: meta.available_times || get().availableTimes,
         currentsTimes: meta.currents_times || get().currentsTimes,
-        presets: meta.presets || {
-          'Arabian Sea': { lat_min: 5.0, lat_max: 25.0, lon_min: 50.0, lon_max: 77.0 },
-          'Bay of Bengal': { lat_min: 5.0, lat_max: 23.0, lon_min: 78.0, lon_max: 98.0 },
-          'Equatorial Indian Ocean': { lat_min: -10.0, lat_max: 10.0, lon_min: 50.0, lon_max: 100.0 },
-          'Full Indian Ocean': { lat_min: -25.0, lat_max: 25.0, lon_min: 40.0, lon_max: 110.0 },
-        },
+        presets: mergedPresets,
       });
 
       // Load initial parameter slice and observations
